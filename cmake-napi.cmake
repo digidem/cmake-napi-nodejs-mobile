@@ -7,6 +7,7 @@ function(download_node_headers result)
     DESTINATION
     VERSION
     IMPORT_FILE
+    NODE_BIN
   )
 
   cmake_parse_arguments(
@@ -18,7 +19,7 @@ function(download_node_headers result)
   endif()
 
   if(NOT ARGV_VERSION)
-    set(ARGV_VERSION "20.17.0")
+    set(ARGV_VERSION "18.20.4")
   endif()
 
   napi_target(target)
@@ -28,7 +29,7 @@ function(download_node_headers result)
   set(archive "${CMAKE_CURRENT_BINARY_DIR}/node-${version}.tar.gz")
 
   file(DOWNLOAD
-    "https://nodejs.org/download/release/${version}/node-${version}-headers.tar.gz"
+    "https://github.com/nodejs-mobile/nodejs-mobile/releases/download/${version}/nodejs-mobile-${version}-android.zip"
     "${archive}"
   )
 
@@ -56,9 +57,16 @@ function(download_node_headers result)
     endif()
   endif()
 
-  set(${result} "${ARGV_DESTINATION}/node-${version}/include/node")
+  set(${result} "${ARGV_DESTINATION}/include/node")
 
-  return(PROPAGATE ${result} ${import_file})
+  set(node_bin_arg ${ARGV_NODE_BIN})
+
+  if (node_bin_arg)
+    node_arch(arch)
+    set(${node_bin_arg} "${ARGV_DESTINATION}/bin/${arch}/libnode.so")
+  endif()
+
+  return(PROPAGATE ${result} ${node_bin_arg} ${import_file})
 endfunction()
 
 function(napi_platform result)
@@ -108,6 +116,24 @@ function(napi_arch result)
     set(${result} "ia32")
   else()
     set(${result} "unknown")
+  endif()
+
+  return(PROPAGATE ${result})
+endfunction()
+
+function(node_arch result)
+  napi_arch(arch)
+
+  if(arch STREQUAL "arm")
+    set(${result} "armeabi-v7a")
+  elseif(arch STREQUAL "arm64")
+    set(${result} "arm64-v8a")
+  elseif(arch STREQUAL "ia32")
+    set(${result} "x86")
+  elseif(arch STREQUAL "x64")
+    set(${result} "x86_64")
+  else()
+    set(${result} ${arch})
   endif()
 
   return(PROPAGATE ${result})
@@ -170,7 +196,7 @@ function(napi_module_target directory result)
 endfunction()
 
 function(add_napi_module result)
-  download_node_headers(node_headers IMPORT_FILE node_lib)
+  download_node_headers(node_headers IMPORT_FILE node_lib NODE_BIN node_bin)
 
   napi_module_target("." target NAME name VERSION version)
 
@@ -231,6 +257,14 @@ function(add_napi_module result)
     PRIVATE
       ${target}
   )
+
+  if(host MATCHES "android")
+    target_link_libraries(
+      ${target}_module
+      PRIVATE
+        ${node_bin}
+    )
+  endif()
 
   if(host MATCHES "win32")
     add_executable(${target}_import_library IMPORTED)
