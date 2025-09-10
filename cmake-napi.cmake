@@ -139,11 +139,30 @@ function(node_arch result)
   return(PROPAGATE ${result})
 endfunction()
 
+function(napi_environment result)
+  set(environment "")
+
+  if(LINUX AND CMAKE_C_COMPILER_TARGET MATCHES "-(musl(sf))?")
+    set(environment "${CMAKE_MATCH_1}")
+  endif()
+
+  set(${result} ${environment})
+
+  return(PROPAGATE ${result})
+endfunction()
+
 function(napi_target result)
   napi_platform(platform)
   napi_arch(arch)
+  napi_environment(environment)
 
-  set(${result} ${platform}-${arch})
+  set(target ${platform}-${arch})
+
+  if(environment)
+    set(target ${target}-${environment})
+  endif()
+
+  set(${result} ${target})
 
   return(PROPAGATE ${result})
 endfunction()
@@ -169,7 +188,11 @@ function(napi_module_target directory result)
 
   string(JSON name GET "${package}" "name")
 
-  string(REGEX REPLACE "/" "+" name ${name})
+  if(name MATCHES "__")
+    message(FATAL_ERROR "Package name '${name}' is invalid")
+  endif()
+
+  string(REGEX REPLACE "/" "__" name ${name})
   string(REGEX REPLACE "^@" "" name ${name})
 
   string(JSON version GET "${package}" "version")

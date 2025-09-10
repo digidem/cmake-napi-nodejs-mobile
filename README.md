@@ -16,6 +16,8 @@ find_package(cmake-napi REQUIRED PATHS node_modules/cmake-napi)
 
 #### `napi_arch(<result>)`
 
+#### `napi_environment(<result>)`
+
 #### `napi_target(<result>)`
 
 #### `napi_module_target(<directory> <result> [NAME <var>] [VERSION <var>] [HASH <var>])`
