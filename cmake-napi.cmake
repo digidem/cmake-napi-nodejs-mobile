@@ -23,13 +23,20 @@ function(download_node_headers result)
   endif()
 
   napi_target(target)
+  napi_platform(platform)
 
   set(version "v${ARGV_VERSION}")
+
+  if(platform STREQUAL "ios")
+    set(archive_name "nodejs-mobile-${version}-ios.zip")
+  else()
+    set(archive_name "nodejs-mobile-${version}-android.zip")
+  endif()
 
   set(archive "${CMAKE_CURRENT_BINARY_DIR}/node-${version}.tar.gz")
 
   file(DOWNLOAD
-    "https://github.com/nodejs-mobile/nodejs-mobile/releases/download/${version}/nodejs-mobile-${version}-android.zip"
+    "https://github.com/nodejs-mobile/nodejs-mobile/releases/download/${version}/${archive_name}"
     "${archive}"
   )
 
@@ -61,9 +68,18 @@ function(download_node_headers result)
 
   set(node_bin_arg ${ARGV_NODE_BIN})
 
-  if (node_bin_arg)
-    node_arch(arch)
-    set(${node_bin_arg} "${ARGV_DESTINATION}/bin/${arch}/libnode.so")
+  if(node_bin_arg)
+    if(platform STREQUAL "ios")
+      string(TOLOWER "${CMAKE_OSX_SYSROOT}" sysroot_lc)
+      if(sysroot_lc MATCHES "iphonesimulator")
+        set(${node_bin_arg} "${ARGV_DESTINATION}/NodeMobile.xcframework/ios-arm64_x86_64-simulator/NodeMobile.framework")
+      else()
+        set(${node_bin_arg} "${ARGV_DESTINATION}/NodeMobile.xcframework/ios-arm64/NodeMobile.framework")
+      endif()
+    else()
+      node_arch(arch)
+      set(${node_bin_arg} "${ARGV_DESTINATION}/bin/${arch}/libnode.so")
+    endif()
   endif()
 
   return(PROPAGATE ${result} ${node_bin_arg} ${import_file})
@@ -162,6 +178,13 @@ function(napi_target result)
     set(target ${target}-${environment})
   endif()
 
+  if(platform STREQUAL "ios")
+    string(TOLOWER "${CMAKE_OSX_SYSROOT}" sysroot_lc)
+    if(sysroot_lc MATCHES "iphonesimulator")
+      set(target ${target}-simulator)
+    endif()
+  endif()
+
   set(${result} ${target})
 
   return(PROPAGATE ${result})
@@ -245,10 +268,6 @@ function(add_napi_module result)
 
   napi_target(host)
 
-  if(host MATCHES "ios")
-    return(PROPAGATE ${result})
-  endif()
-
   add_library(${target}_module SHARED)
 
   set_target_properties(
@@ -286,6 +305,17 @@ function(add_napi_module result)
       ${target}_module
       PRIVATE
         ${node_bin}
+    )
+  endif()
+
+  if(host MATCHES "ios")
+    cmake_path(GET node_bin PARENT_PATH node_bin_framework_dir)
+
+    target_link_options(
+      ${target}_module
+      PRIVATE
+        -F${node_bin_framework_dir}
+        -framework NodeMobile
     )
   endif()
 
@@ -334,7 +364,7 @@ function(add_napi_module result)
       PUBLIC
         napi_delay_load
     )
-  else()
+  elseif(NOT host MATCHES "ios")
     target_link_options(
       ${target}_module
       PRIVATE
