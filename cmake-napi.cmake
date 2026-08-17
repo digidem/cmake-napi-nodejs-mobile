@@ -2,6 +2,10 @@ include_guard()
 
 set(napi_module_dir "${CMAKE_CURRENT_LIST_DIR}")
 
+set(NAPI_NODE_VERSION "18.20.4" CACHE STRING "nodejs-mobile release to build against, without the leading 'v'")
+
+set(NAPI_NODE_MOBILE_REPO "digidem/nodejs-mobile" CACHE STRING "GitHub repository hosting the nodejs-mobile releases")
+
 function(download_node_headers result)
   set(one_value_keywords
     DESTINATION
@@ -14,12 +18,8 @@ function(download_node_headers result)
     PARSE_ARGV 1 ARGV "" "${one_value_keywords}" ""
   )
 
-  if(NOT ARGV_DESTINATION)
-    set(ARGV_DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/_napi")
-  endif()
-
   if(NOT ARGV_VERSION)
-    set(ARGV_VERSION "18.20.4")
+    set(ARGV_VERSION "${NAPI_NODE_VERSION}")
   endif()
 
   napi_target(target)
@@ -27,18 +27,40 @@ function(download_node_headers result)
 
   set(version "v${ARGV_VERSION}")
 
+  # Keyed by version so that builds against different runtimes in the same
+  # binary dir do not extract over each other.
+  if(NOT ARGV_DESTINATION)
+    set(ARGV_DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/_napi/${version}")
+  endif()
+
   if(platform STREQUAL "ios")
-    set(archive_name "nodejs-mobile-${version}-ios.zip")
+    set(os "ios")
   else()
-    set(archive_name "nodejs-mobile-${version}-android.zip")
+    set(os "android")
+  endif()
+
+  # nodejs-mobile releases carrying a mobile revision suffix (vX.Y.Z-R) name
+  # their assets nodejs-mobile-<os>-<version>.zip; older releases use
+  # nodejs-mobile-v<version>-<os>.zip.
+  if(ARGV_VERSION MATCHES "-[0-9]+$")
+    set(archive_name "nodejs-mobile-${os}-${ARGV_VERSION}.zip")
+  else()
+    set(archive_name "nodejs-mobile-${version}-${os}.zip")
   endif()
 
   set(archive "${CMAKE_CURRENT_BINARY_DIR}/node-${version}.tar.gz")
 
-  file(DOWNLOAD
-    "https://github.com/nodejs-mobile/nodejs-mobile/releases/download/${version}/${archive_name}"
-    "${archive}"
-  )
+  set(url "https://github.com/${NAPI_NODE_MOBILE_REPO}/releases/download/${version}/${archive_name}")
+
+  file(DOWNLOAD "${url}" "${archive}" STATUS download_status)
+
+  list(GET download_status 0 download_code)
+
+  if(NOT download_code EQUAL 0)
+    list(GET download_status 1 download_message)
+    file(REMOVE "${archive}")
+    message(FATAL_ERROR "Could not download ${url}: ${download_message}")
+  endif()
 
   file(ARCHIVE_EXTRACT
     INPUT "${archive}"
@@ -72,7 +94,18 @@ function(download_node_headers result)
     if(platform STREQUAL "ios")
       string(TOLOWER "${CMAKE_OSX_SYSROOT}" sysroot_lc)
       if(sysroot_lc MATCHES "iphonesimulator")
-        set(${node_bin_arg} "${ARGV_DESTINATION}/NodeMobile.xcframework/ios-arm64_x86_64-simulator/NodeMobile.framework")
+        # v18 ships a fat simulator slice; v24 is arm64-only.
+        set(simulator_slice "${ARGV_DESTINATION}/NodeMobile.xcframework/ios-arm64_x86_64-simulator/NodeMobile.framework")
+
+        if(NOT EXISTS "${simulator_slice}")
+          set(simulator_slice "${ARGV_DESTINATION}/NodeMobile.xcframework/ios-arm64-simulator/NodeMobile.framework")
+        endif()
+
+        if(NOT EXISTS "${simulator_slice}")
+          message(FATAL_ERROR "No iOS simulator slice in ${ARGV_DESTINATION}/NodeMobile.xcframework")
+        endif()
+
+        set(${node_bin_arg} "${simulator_slice}")
       else()
         set(${node_bin_arg} "${ARGV_DESTINATION}/NodeMobile.xcframework/ios-arm64/NodeMobile.framework")
       endif()
