@@ -2,6 +2,10 @@ include_guard()
 
 set(napi_module_dir "${CMAKE_CURRENT_LIST_DIR}")
 
+set(NAPI_NODE_VERSION "24.19.0-0" CACHE STRING "nodejs-mobile release to build against, without the leading 'v'")
+
+set(NAPI_NODE_MOBILE_REPO "digidem/nodejs-mobile" CACHE STRING "GitHub repository hosting the nodejs-mobile releases")
+
 function(download_node_headers result)
   set(one_value_keywords
     DESTINATION
@@ -14,18 +18,20 @@ function(download_node_headers result)
     PARSE_ARGV 1 ARGV "" "${one_value_keywords}" ""
   )
 
-  if(NOT ARGV_DESTINATION)
-    set(ARGV_DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/_napi")
-  endif()
-
   if(NOT ARGV_VERSION)
-    set(ARGV_VERSION "24.19.0-0")
+    set(ARGV_VERSION "${NAPI_NODE_VERSION}")
   endif()
 
   napi_target(target)
   napi_platform(platform)
 
   set(version "v${ARGV_VERSION}")
+
+  # Keyed by version so that builds against different runtimes in the same
+  # binary dir do not extract over each other.
+  if(NOT ARGV_DESTINATION)
+    set(ARGV_DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/_napi/${version}")
+  endif()
 
   if(platform STREQUAL "ios")
     set(os "ios")
@@ -37,7 +43,7 @@ function(download_node_headers result)
 
   set(archive "${CMAKE_CURRENT_BINARY_DIR}/node-${version}.tar.gz")
 
-  set(url "https://github.com/digidem/nodejs-mobile/releases/download/${version}/${archive_name}")
+  set(url "https://github.com/${NAPI_NODE_MOBILE_REPO}/releases/download/${version}/${archive_name}")
 
   file(DOWNLOAD "${url}" "${archive}" STATUS download_status)
 
